@@ -1,0 +1,824 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>MAWANI — PCS Vessel Arrival Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700;900&family=Barlow+Condensed:wght@400;600;700;800&family=IBM+Plex+Mono:wght@300;400;500&family=Noto+Kufi+Arabic:wght@300;500;700&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#07111f;
+  --surface:#0d1e35;
+  --surface2:#112240;
+  --surface3:#162d52;
+  --border:rgba(100,180,255,0.1);
+  --border2:rgba(100,180,255,0.18);
+  --teal:#00e5c3;
+  --teal2:#00b89a;
+  --blue:#3db4f2;
+  --gold:#f5a623;
+  --red:#ff5c6a;
+  --green:#34d399;
+  --purple:#a78bfa;
+  --txt:#d4e5f7;
+  --txt2:#7a9ab8;
+  --txt3:#3f5f7a;
+  --mono:'IBM Plex Mono',monospace;
+  --head:'Barlow Condensed',sans-serif;
+  --body:'Barlow',sans-serif;
+}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--txt);font-family:var(--body)}
+
+/* ── NOISE LAYER ── */
+body::before{content:’’;position:fixed;inset:0;z-index:0;opacity:.035;
+background-image:url(“data:image/svg+xml,%3Csvg xmlns=‘http://www.w3.org/2000/svg’ width=‘300’ height=‘300’%3E%3Cfilter id=‘n’%3E%3CfeTurbulence type=‘fractalNoise’ baseFrequency=’.75’ numOctaves=‘4’ stitchTiles=‘stitch’/%3E%3C/filter%3E%3Crect width=‘300’ height=‘300’ filter=‘url(%23n)’/%3E%3C/svg%3E”);
+pointer-events:none}
+
+/* ── LAYOUT ── */
+.shell{position:relative;z-index:1;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+/* ── TOPBAR ── */
+.topbar{
+display:flex;align-items:center;justify-content:space-between;
+padding:0 1.5rem;height:56px;flex-shrink:0;
+background:rgba(7,17,31,.97);
+border-bottom:1px solid var(–border);
+backdrop-filter:blur(16px);
+}
+.brand{display:flex;align-items:center;gap:.85rem}
+.brand-icon{
+width:36px;height:36px;border-radius:7px;
+background:linear-gradient(135deg,var(–teal),var(–blue));
+display:flex;align-items:center;justify-content:center;
+font-size:1.1rem;flex-shrink:0;
+box-shadow:0 0 16px rgba(0,229,195,.3)
+}
+.brand-text-en{font-family:var(–head);font-size:1.15rem;font-weight:800;letter-spacing:.04em;line-height:1}
+.brand-text-ar{font-family:‘Noto Kufi Arabic’,sans-serif;font-size:.65rem;color:var(–teal);letter-spacing:.06em;margin-top:1px}
+
+.topbar-mid{display:flex;align-items:center;gap:2rem}
+.live-badge{
+display:flex;align-items:center;gap:.5rem;
+padding:.25rem .75rem;border-radius:20px;
+background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.25);
+font-family:var(–mono);font-size:.62rem;color:var(–green);letter-spacing:.08em
+}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(–green);animation:blink 1.3s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+.clock{font-family:var(–mono);font-size:.68rem;color:var(–txt2)}
+
+.topbar-stats{display:flex;gap:.5rem}
+.tstat{
+display:flex;flex-direction:column;align-items:center;justify-content:center;
+padding:.3rem .9rem;border-radius:7px;
+background:var(–surface);border:1px solid var(–border);
+min-width:72px
+}
+.tstat-val{font-family:var(–head);font-size:1.2rem;font-weight:800;line-height:1}
+.tstat-lbl{font-family:var(–mono);font-size:.5rem;color:var(–txt3);letter-spacing:.1em;text-transform:uppercase;margin-top:2px}
+
+/* ── BODY SPLIT ── */
+.body-split{display:flex;flex:1;overflow:hidden;min-height:0}
+
+/* ── LEFT PANEL ── */
+.left-panel{
+width:340px;flex-shrink:0;
+display:flex;flex-direction:column;
+border-right:1px solid var(–border);
+background:var(–surface);
+overflow:hidden
+}
+
+/* ── SEARCH BOX ── */
+.search-box{padding:1rem 1rem .75rem;border-bottom:1px solid var(–border)}
+.search-title{font-family:var(–mono);font-size:.55rem;color:var(–teal);letter-spacing:.18em;text-transform:uppercase;margin-bottom:.6rem}
+.search-row{position:relative;margin-bottom:.6rem}
+.search-icon{position:absolute;left:.65rem;top:50%;transform:translateY(-50%);font-size:.8rem;color:var(–txt3)}
+.sinput{
+width:100%;padding:.5rem .75rem .5rem 2rem;
+background:var(–surface2);border:1px solid var(–border);border-radius:7px;
+color:var(–txt);font-family:var(–mono);font-size:.72rem;
+outline:none;transition:.2s
+}
+.sinput::placeholder{color:var(–txt3)}
+.sinput:focus{border-color:var(–teal);background:rgba(0,229,195,.05);box-shadow:0 0 0 3px rgba(0,229,195,.08)}
+.sinput-select{
+width:100%;padding:.5rem .75rem;appearance:none;
+background:var(–surface2) url(“data:image/svg+xml,%3Csvg xmlns=‘http://www.w3.org/2000/svg’ width=‘10’ height=‘6’%3E%3Cpath d=‘M0 0l5 6 5-6z’ fill=’%237a9ab8’/%3E%3C/svg%3E”) no-repeat right .75rem center;
+border:1px solid var(–border);border-radius:7px;
+color:var(–txt);font-family:var(–mono);font-size:.72rem;
+outline:none;cursor:pointer;transition:.2s
+}
+.sinput-select:focus{border-color:var(–teal)}
+.sinput-select option{background:var(–surface2)}
+.filter-grid{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.6rem}
+
+.search-actions{display:flex;gap:.5rem}
+.btn-primary{
+flex:1;padding:.48rem;border:none;border-radius:7px;cursor:pointer;
+background:var(–teal);color:#07111f;
+font-family:var(–head);font-size:.82rem;font-weight:700;letter-spacing:.04em;
+transition:.2s
+}
+.btn-primary:hover{background:var(–teal2)}
+.btn-ghost{
+padding:.48rem .85rem;border:1px solid var(–border);border-radius:7px;cursor:pointer;
+background:transparent;color:var(–txt2);
+font-family:var(–mono);font-size:.7rem;
+transition:.2s
+}
+.btn-ghost:hover{border-color:var(–border2);color:var(–txt)}
+
+/* ── SORT & FILTER CHIPS ── */
+.sort-bar{
+padding:.65rem 1rem;border-bottom:1px solid var(–border);
+display:flex;flex-direction:column;gap:.5rem
+}
+.sort-row{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+.sort-label{font-family:var(–mono);font-size:.56rem;color:var(–txt3);letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
+.chip{
+padding:.22rem .65rem;border-radius:20px;
+border:1px solid var(–border);
+background:transparent;color:var(–txt2);
+font-family:var(–mono);font-size:.6rem;letter-spacing:.05em;
+cursor:pointer;transition:.18s;white-space:nowrap
+}
+.chip.active{background:rgba(0,229,195,.12);border-color:var(–teal);color:var(–teal)}
+.chip:hover:not(.active){border-color:var(–border2);color:var(–txt)}
+.status-chips{display:flex;gap:.35rem;flex-wrap:wrap}
+.schip{padding:.2rem .6rem;border-radius:20px;border:1px solid transparent;font-family:var(–mono);font-size:.58rem;cursor:pointer;transition:.18s}
+.schip.all{border-color:rgba(212,229,247,.2);color:var(–txt2)}
+.schip.all.active,.schip.all:hover{background:rgba(212,229,247,.08);color:var(–txt)}
+.schip.arrived{border-color:rgba(52,211,153,.25);color:var(–green)}
+.schip.arrived.active,.schip.arrived:hover{background:rgba(52,211,153,.1)}
+.schip.arriving{border-color:rgba(0,229,195,.25);color:var(–teal)}
+.schip.arriving.active,.schip.arriving:hover{background:rgba(0,229,195,.1)}
+.schip.expected{border-color:rgba(61,180,242,.25);color:var(–blue)}
+.schip.expected.active,.schip.expected:hover{background:rgba(61,180,242,.1)}
+.schip.delayed{border-color:rgba(245,166,35,.25);color:var(–gold)}
+.schip.delayed.active,.schip.delayed:hover{background:rgba(245,166,35,.1)}
+.schip.departed{border-color:rgba(255,92,106,.25);color:var(–red)}
+.schip.departed.active,.schip.departed:hover{background:rgba(255,92,106,.1)}
+.schip.docked{border-color:rgba(167,139,250,.25);color:var(–purple)}
+.schip.docked.active,.schip.docked:hover{background:rgba(167,139,250,.1)}
+
+/* ── SHIP LIST ── */
+.ship-list{flex:1;overflow-y:auto;padding:.75rem .75rem}
+.ship-list::-webkit-scrollbar{width:4px}
+.ship-list::-webkit-scrollbar-track{background:transparent}
+.ship-list::-webkit-scrollbar-thumb{background:rgba(0,229,195,.2);border-radius:2px}
+
+.res-count{font-family:var(–mono);font-size:.6rem;color:var(–txt3);padding:.25rem .25rem .6rem;letter-spacing:.06em}
+.res-count span{color:var(–gold)}
+
+.ship-card{
+background:var(–surface2);border:1px solid var(–border);border-radius:10px;
+padding:.85rem;margin-bottom:.6rem;cursor:pointer;
+transition:border-color .2s,background .2s,transform .15s;
+animation:cardin .3s ease both
+}
+@keyframes cardin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.ship-card:hover{border-color:var(–border2);background:var(–surface3);transform:translateX(2px)}
+.ship-card.selected{border-color:var(–teal);background:rgba(0,229,195,.06)}
+
+.card-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:.6rem}
+.card-vessel{display:flex;align-items:center;gap:.65rem}
+.vessel-icon{
+width:34px;height:34px;border-radius:8px;flex-shrink:0;
+display:flex;align-items:center;justify-content:center;font-size:1rem;
+background:rgba(0,229,195,.08);border:1px solid rgba(0,229,195,.15)
+}
+.vessel-name{font-family:var(–head);font-size:1rem;font-weight:700;line-height:1;color:var(–txt)}
+.vessel-type{font-family:var(–mono);font-size:.58rem;color:var(–txt3);margin-top:2px}
+
+.sbadge{
+display:inline-flex;align-items:center;gap:.3rem;
+padding:.18rem .55rem;border-radius:20px;
+font-family:var(–mono);font-size:.56rem;letter-spacing:.05em;font-weight:500;
+white-space:nowrap;flex-shrink:0
+}
+.sbadge::before{content:’’;width:5px;height:5px;border-radius:50%}
+.sbadge.arrived{background:rgba(52,211,153,.1);color:var(–green);border:1px solid rgba(52,211,153,.25)}
+.sbadge.arrived::before{background:var(–green)}
+.sbadge.arriving{background:rgba(0,229,195,.1);color:var(–teal);border:1px solid rgba(0,229,195,.25);animation:pulse-badge 1.8s ease-in-out infinite}
+@keyframes pulse-badge{0%,100%{opacity:1}50%{opacity:.6}}
+.sbadge.arriving::before{background:var(–teal)}
+.sbadge.expected{background:rgba(61,180,242,.1);color:var(–blue);border:1px solid rgba(61,180,242,.25)}
+.sbadge.expected::before{background:var(–blue)}
+.sbadge.delayed{background:rgba(245,166,35,.1);color:var(–gold);border:1px solid rgba(245,166,35,.25)}
+.sbadge.delayed::before{background:var(–gold)}
+.sbadge.departed{background:rgba(255,92,106,.1);color:var(–red);border:1px solid rgba(255,92,106,.25)}
+.sbadge.departed::before{background:var(–red)}
+.sbadge.docked{background:rgba(167,139,250,.1);color:var(–purple);border:1px solid rgba(167,139,250,.25)}
+.sbadge.docked::before{background:var(–purple)}
+
+.card-meta{display:grid;grid-template-columns:1fr 1fr;gap:.3rem .6rem;margin-bottom:.6rem}
+.meta-item{display:flex;flex-direction:column;gap:.1rem}
+.meta-label{font-family:var(–mono);font-size:.52rem;color:var(–txt3);letter-spacing:.08em;text-transform:uppercase}
+.meta-val{font-family:var(–mono);font-size:.68rem;color:var(–txt2)}
+.meta-val.accent{color:var(–teal)}
+.meta-val.warn{color:var(–gold)}
+.meta-val.flag{font-size:.72rem}
+
+.card-bottom{
+display:flex;align-items:center;justify-content:space-between;
+padding-top:.6rem;border-top:1px solid var(–border)
+}
+.contractor-badge{display:flex;align-items:center;gap:.4rem}
+.contractor-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.contractor-name{font-family:var(–mono);font-size:.6rem;color:var(–txt3)}
+.card-speed{font-family:var(–mono);font-size:.6rem;color:var(–txt3)}
+.card-speed span{color:var(–blue)}
+
+/* ── RIGHT PANEL: MAP + DETAIL ── */
+.right-panel{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+
+/* ── MAP ── */
+.map-wrap{position:relative;height:52%;flex-shrink:0;border-bottom:1px solid var(–border)}
+#map{width:100%;height:100%}
+.map-top-fade{position:absolute;top:0;left:0;right:0;height:50px;background:linear-gradient(to bottom,rgba(7,17,31,.8),transparent);pointer-events:none;z-index:10}
+.map-bot-fade{position:absolute;bottom:0;left:0;right:0;height:60px;background:linear-gradient(to top,rgba(7,17,31,.95),transparent);pointer-events:none;z-index:10}
+.map-badge{
+position:absolute;top:12px;left:14px;z-index:20;
+display:flex;align-items:center;gap:.5rem;
+background:rgba(7,17,31,.85);border:1px solid var(–border);
+border-radius:7px;padding:.35rem .75rem;
+font-family:var(–mono);font-size:.6rem;color:var(–txt2);
+backdrop-filter:blur(8px)
+}
+.map-badge-dot{width:7px;height:7px;border-radius:50%;background:var(–teal);animation:blink 1.3s ease-in-out infinite}
+.map-legend{
+position:absolute;bottom:18px;right:14px;z-index:20;
+display:flex;flex-direction:column;gap:.35rem;
+background:rgba(7,17,31,.85);border:1px solid var(–border);
+border-radius:8px;padding:.6rem .8rem;
+backdrop-filter:blur(8px)
+}
+.leg-item{display:flex;align-items:center;gap:.5rem;font-family:var(–mono);font-size:.58rem;color:var(–txt2)}
+.leg-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.leg-diamond{width:8px;height:8px;border-radius:2px;transform:rotate(45deg);flex-shrink:0;background:rgba(167,139,250,.9)}
+
+/* ── DETAIL PANEL ── */
+.detail-panel{flex:1;overflow-y:auto;padding:1.2rem 1.5rem;background:var(–bg)}
+.detail-panel::-webkit-scrollbar{width:4px}
+.detail-panel::-webkit-scrollbar-thumb{background:rgba(0,229,195,.2);border-radius:2px}
+
+.detail-empty{
+height:100%;display:flex;flex-direction:column;
+align-items:center;justify-content:center;
+color:var(–txt3);font-family:var(–mono);font-size:.75rem;
+letter-spacing:.08em;gap:.8rem
+}
+.detail-empty-icon{font-size:2.5rem;opacity:.3}
+
+.detail-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1.2rem}
+.dh-left{}
+.dh-vessel{font-family:var(–head);font-size:1.8rem;font-weight:900;line-height:1;letter-spacing:.02em}
+.dh-sub{display:flex;align-items:center;gap:.8rem;margin-top:.35rem}
+.dh-imo{font-family:var(–mono);font-size:.7rem;color:var(–txt2)}
+.dh-flag{font-size:.9rem}
+.dh-right{display:flex;flex-direction:column;align-items:flex-end;gap:.5rem}
+
+.detail-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem;margin-bottom:1.2rem}
+.dcard{
+background:var(–surface);border:1px solid var(–border);border-radius:9px;
+padding:.85rem;
+}
+.dcard-label{font-family:var(–mono);font-size:.52rem;color:var(–txt3);letter-spacing:.12em;text-transform:uppercase;margin-bottom:.35rem}
+.dcard-val{font-family:var(–head);font-size:1.05rem;font-weight:700;color:var(–txt)}
+.dcard-val.accent{color:var(–teal)}
+.dcard-val.warn{color:var(–gold)}
+.dcard-val.red{color:var(–red)}
+.dcard-sub{font-family:var(–mono);font-size:.6rem;color:var(–txt3);margin-top:2px}
+
+.detail-section{margin-bottom:1.2rem}
+.ds-title{font-family:var(–mono);font-size:.58rem;color:var(–teal);letter-spacing:.18em;text-transform:uppercase;
+padding-bottom:.5rem;border-bottom:1px solid rgba(0,229,195,.15);margin-bottom:.85rem}
+
+.info-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.6rem}
+.info-item{display:flex;flex-direction:column;gap:.2rem}
+.info-label{font-family:var(–mono);font-size:.52rem;color:var(–txt3);letter-spacing:.08em;text-transform:uppercase}
+.info-val{font-family:var(–mono);font-size:.72rem;color:var(–txt)}
+.info-val.teal{color:var(–teal)}
+.info-val.gold{color:var(–gold)}
+
+/* ── TIMELINE ── */
+.timeline{display:flex;gap:0;position:relative}
+.timeline::before{content:’’;position:absolute;top:1rem;left:1rem;right:1rem;height:2px;background:var(–border);z-index:0}
+.tl-step{flex:1;display:flex;flex-direction:column;align-items:center;gap:.4rem;position:relative;z-index:1}
+.tl-node{width:2rem;height:2rem;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.75rem;border:2px solid;transition:.2s}
+.tl-node.done{background:var(–teal);border-color:var(–teal);color:#07111f}
+.tl-node.active{background:rgba(0,229,195,.1);border-color:var(–teal);color:var(–teal);animation:tl-pulse 2s ease-in-out infinite}
+@keyframes tl-pulse{0%,100%{box-shadow:0 0 0 0 rgba(0,229,195,.4)}50%{box-shadow:0 0 0 7px rgba(0,229,195,0)}}
+.tl-node.pending{background:var(–surface);border-color:var(–border);color:var(–txt3)}
+.tl-label{font-family:var(–mono);font-size:.58rem;color:var(–txt2);text-align:center;line-height:1.3}
+.tl-time{font-family:var(–mono);font-size:.55rem;color:var(–txt3);text-align:center}
+
+/* ── LEAFLET OVERRIDES ── */
+.leaflet-container{background:#07111f!important}
+.vmap-popup .leaflet-popup-content-wrapper{
+background:#0d1e35;border:1px solid rgba(0,229,195,.25);
+border-radius:9px;box-shadow:0 8px 32px rgba(0,0,0,.5);
+color:var(–txt)
+}
+.vmap-popup .leaflet-popup-tip{background:#0d1e35}
+.leaflet-popup-content{margin:.75rem!important}
+.pop-name{font-family:‘Barlow Condensed’,sans-serif;font-size:.95rem;font-weight:700;color:#3db4f2;margin-bottom:.25rem}
+.pop-row{font-family:‘IBM Plex Mono’,monospace;font-size:.6rem;color:#7a9ab8;margin-bottom:.1rem}
+.pop-status{margin-top:.4rem}
+
+/* ── RESPONSIVE ── */
+@media(max-width:1100px){.left-panel{width:300px}.detail-grid{grid-template-columns:1fr 1fr}.info-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:800px){.left-panel{width:260px}.topbar-mid{display:none}}
+</style>
+
+</head>
+<body>
+<div class="shell">
+
+<!-- TOP BAR -->
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-icon">⚓</div>
+    <div>
+      <div class="brand-text-en">MAWANI · PCS</div>
+      <div class="brand-text-ar">نظام بيانات السفن المتوقعة · Expected Vessel Arrivals</div>
+    </div>
+  </div>
+  <div class="topbar-mid">
+    <div class="live-badge"><div class="live-dot"></div>LIVE DATA</div>
+    <div class="clock" id="clock">UTC 00:00:00</div>
+  </div>
+  <div class="topbar-stats">
+    <div class="tstat"><div class="tstat-val" id="st-total" style="color:var(--txt)">25</div><div class="tstat-lbl">Total</div></div>
+    <div class="tstat"><div class="tstat-val" id="st-arriving" style="color:var(--teal)">3</div><div class="tstat-lbl">Arriving</div></div>
+    <div class="tstat"><div class="tstat-val" id="st-docked" style="color:var(--purple)">14</div><div class="tstat-lbl">Docked</div></div>
+    <div class="tstat"><div class="tstat-val" id="st-delayed" style="color:var(--gold)">2</div><div class="tstat-lbl">Delayed</div></div>
+    <div class="tstat"><div class="tstat-val" id="st-departed" style="color:var(--red)">3</div><div class="tstat-lbl">Departed</div></div>
+  </div>
+</header>
+
+<div class="body-split">
+
+  <!-- LEFT PANEL -->
+
+  <div class="left-panel">
+    <!-- SEARCH -->
+    <div class="search-box">
+      <div class="search-title">⬡ Search &amp; Filter</div>
+      <div class="search-row">
+        <span class="search-icon">🔍</span>
+        <input class="sinput" id="q-name" placeholder="Vessel name or IMO…" oninput="applyFilters()" autocomplete="off"/>
+      </div>
+      <div class="search-row">
+        <span class="search-icon">🔖</span>
+        <input class="sinput" id="q-voyage" placeholder="Voyage No. e.g. V023…" oninput="applyFilters()" autocomplete="off"/>
+      </div>
+      <div class="filter-grid">
+        <select class="sinput-select" id="q-port" onchange="applyFilters()">
+          <option value="">All Ports</option>
+          <option>Jeddah Islamic Port</option>
+          <option>King Abdulaziz Port — Dammam</option>
+          <option>Jubail Commercial Port</option>
+          <option>Yanbu Commercial Port</option>
+          <option>Jazan Port</option>
+          <option>Ras Al-Khair Port</option>
+          <option>King Fahad Industrial Port</option>
+          <option>Ras Tanura Port</option>
+        </select>
+        <select class="sinput-select" id="q-contractor" onchange="applyFilters()">
+          <option value="">All Contractors</option>
+          <option>RSGT</option>
+          <option>Saudi Global Ports</option>
+          <option>APM Terminals</option>
+          <option>Red Sea Gateway Terminal</option>
+          <option>ICTSI Saudi</option>
+          <option>Saudi Aramco</option>
+        </select>
+      </div>
+      <div class="search-actions">
+        <button class="btn-primary" onclick="applyFilters()">Search</button>
+        <button class="btn-ghost" onclick="resetAll()">Reset</button>
+      </div>
+    </div>
+
+```
+<!-- SORT & STATUS -->
+<div class="sort-bar">
+  <div class="sort-row">
+    <span class="sort-label">Sort:</span>
+    <div id="sort-chips" style="display:flex;gap:.3rem;flex-wrap:wrap">
+      <button class="chip active" data-sort="eta" onclick="setSort('eta',this)">ETA ↑</button>
+      <button class="chip" data-sort="name" onclick="setSort('name',this)">Name</button>
+      <button class="chip" data-sort="speed" onclick="setSort('speed',this)">Speed</button>
+      <button class="chip" data-sort="dwt" onclick="setSort('dwt',this)">DWT</button>
+    </div>
+  </div>
+  <div class="sort-row">
+    <span class="sort-label">Status:</span>
+    <div class="status-chips">
+      <button class="schip all active" onclick="setStatus('all',this)">All</button>
+      <button class="schip arrived" onclick="setStatus('arrived',this)">Arrived</button>
+      <button class="schip arriving" onclick="setStatus('arriving',this)">Arriving</button>
+      <button class="schip docked" onclick="setStatus('docked',this)">Docked</button>
+      <button class="schip expected" onclick="setStatus('expected',this)">Expected</button>
+      <button class="schip delayed" onclick="setStatus('delayed',this)">Delayed</button>
+      <button class="schip departed" onclick="setStatus('departed',this)">Departed</button>
+    </div>
+  </div>
+</div>
+
+<!-- SHIP LIST -->
+<div class="ship-list" id="ship-list">
+  <div class="res-count" id="res-count">Loading…</div>
+</div>
+```
+
+  </div>
+
+  <!-- RIGHT PANEL -->
+
+  <div class="right-panel">
+
+```
+<!-- MAP -->
+<div class="map-wrap">
+  <div id="map"></div>
+  <div class="map-top-fade"></div>
+  <div class="map-bot-fade"></div>
+  <div class="map-badge"><div class="map-badge-dot"></div>Saudi Maritime Domain — Live Vessel Positions</div>
+  <div class="map-legend">
+    <div class="leg-item"><div class="leg-dot" style="background:var(--green)"></div>Arrived</div>
+    <div class="leg-item"><div class="leg-dot" style="background:var(--teal)"></div>Arriving</div>
+    <div class="leg-item"><div class="leg-dot" style="background:var(--purple)"></div>Docked</div>
+    <div class="leg-item"><div class="leg-dot" style="background:var(--blue)"></div>Expected</div>
+    <div class="leg-item"><div class="leg-dot" style="background:var(--gold)"></div>Delayed</div>
+    <div class="leg-item"><div class="leg-dot" style="background:var(--red)"></div>Departed</div>
+    <div class="leg-item"><div class="leg-diamond"></div>Port</div>
+  </div>
+</div>
+
+<!-- DETAIL PANEL -->
+<div class="detail-panel" id="detail-panel">
+  <div class="detail-empty">
+    <div class="detail-empty-icon">🚢</div>
+    <span>Select a vessel to view full details</span>
+  </div>
+</div>
+```
+
+  </div>
+</div>
+</div>
+
+<script>
+// ── CLOCK ──────────────────────────────────────────────
+function tick(){
+  const n=new Date();
+  document.getElementById('clock').textContent=
+    'UTC '+n.getUTCHours().toString().padStart(2,'0')+':'+
+    n.getUTCMinutes().toString().padStart(2,'0')+':'+
+    n.getUTCSeconds().toString().padStart(2,'0');
+}
+tick();setInterval(tick,1000);
+
+// ── DATA ───────────────────────────────────────────────
+const VESSELS=[
+  {id:1,name:'RAS TANURA STAR',imo:'9876521',voyage:'V023',flag:'🇸🇦',nationality:'Saudi Arabia',type:'Oil Tanker',emoji:'🛢️',status:'docked',port:'Ras Tanura Port',contractor:'Saudi Aramco',eta:'Apr 5, 2026 05:00',etd:'Apr 7, 2026 14:00',speed:0,dwt:95000,loa:'274m',beam:'48m',draft:'16.2m',cargo:'Crude Oil',lastPort:'Ras Tanura Port',nextPort:'Ras Tanura Port',agent:'Bahri Shipping',lat:26.72,lng:50.08,berth:'T-4 Berth',inTransit:false},
+  {id:2,name:'DAMMAM GLORY',imo:'9876528',voyage:'V016',flag:'🇸🇦',nationality:'Saudi Arabia',type:'Oil Tanker',emoji:'🛢️',status:'docked',port:'King Abdulaziz Port — Dammam',contractor:'Saudi Global Ports',eta:'Apr 5, 2026 06:00',etd:'Apr 8, 2026 08:00',speed:0,dwt:78000,loa:'249m',beam:'44m',draft:'14.8m',cargo:'Diesel Fuel',lastPort:'King Abdulaziz Port — Dammam',nextPort:'Bahrain',agent:'Kanoo Maritime',lat:26.46,lng:50.03,berth:'D-11',inTransit:false},
+  {id:3,name:'JUBAIL EMPRESS',imo:'9876522',voyage:'V022',flag:'🇸🇦',nationality:'Saudi Arabia',type:'LNG Tanker',emoji:'🔵',status:'docked',port:'Jubail Commercial Port',contractor:'Saudi Global Ports',eta:'Apr 5, 2026 07:30',etd:'Apr 9, 2026 12:00',speed:0,dwt:92000,loa:'290m',beam:'46m',draft:'11.5m',cargo:'Liquid Petroleum Gas',lastPort:'Jubail Commercial Port',nextPort:'Fos-sur-Mer, France',agent:'Inchcape Shipping',lat:27.03,lng:49.65,berth:'J-2',inTransit:false},
+  {id:4,name:'MAKKAH VOYAGER',imo:'9534210',voyage:'V019',flag:'🇸🇦',nationality:'Saudi Arabia',type:'Bulk Carrier',emoji:'⚓',status:'arriving',port:'Jeddah Islamic Port',contractor:'RSGT',eta:'May 11, 2026 09:00',etd:'May 13, 2026 22:00',speed:12.4,dwt:62000,loa:'225m',beam:'32m',draft:'13.1m',cargo:'Grain',lastPort:'Mundra, India',nextPort:'Jeddah Islamic Port',agent:'GAC Saudi Arabia',lat:22.1,lng:39.9,berth:'Pending',inTransit:true},
+  {id:5,name:'INDUSTRIAL CARRIER',imo:'9312087',voyage:'V031',flag:'🇬🇷',nationality:'Greece',type:'General Cargo',emoji:'📦',status:'expected',port:'Yanbu Commercial Port',contractor:'Saudi Ports Authority',eta:'May 13, 2026 14:00',etd:'May 15, 2026 20:00',speed:14.2,dwt:31000,loa:'196m',beam:'30m',draft:'9.8m',cargo:'Steel Products',lastPort:'Port Said, Egypt',nextPort:'Yanbu Commercial Port',agent:'Inchcape Shipping',lat:24.8,lng:37.5,berth:'Pending',inTransit:true},
+  {id:6,name:'GULF PROSPERITY',imo:'9687341',voyage:'V008',flag:'🇦🇪',nationality:'UAE',type:'Container Ship',emoji:'🟦',status:'arriving',port:'King Abdulaziz Port — Dammam',contractor:'APM Terminals',eta:'May 11, 2026 11:30',etd:'May 14, 2026 06:00',speed:18.7,dwt:55000,loa:'295m',beam:'40m',draft:'13.6m',cargo:'Containers',lastPort:'Singapore',nextPort:'King Abdulaziz Port — Dammam',agent:'Kanoo Maritime',lat:25.2,lng:56.8,berth:'Pending',inTransit:true},
+  {id:7,name:'AL MURJAN',imo:'9765432',voyage:'VY-001',flag:'🇸🇦',nationality:'Saudi Arabia',type:'Container Ship',emoji:'🟦',status:'expected',port:'Jeddah Islamic Port',contractor:'RSGT',eta:'May 12, 2026 06:00',etd:'May 14, 2026 18:00',speed:16.3,dwt:48500,loa:'294m',beam:'32m',draft:'12.4m',cargo:'Containers',lastPort:'Salalah, Oman',nextPort:'Jeddah Islamic Port',agent:'Bahri Shipping',lat:18.5,lng:41.5,berth:'Pending',inTransit:true},
+  {id:8,name:'ARABIAN PEARL',imo:'9523870',voyage:'VY-004',flag:'🇸🇦',nationality:'Saudi Arabia',type:'Chemical Tanker',emoji:'⚗️',status:'arriving',port:'Jubail Commercial Port',contractor:'Saudi Global Ports',eta:'May 10, 2026 22:00',etd:'May 12, 2026 10:00',speed:11.8,dwt:75000,loa:'260m',beam:'36m',draft:'14.2m',cargo:'Petrochemicals',lastPort:'Rotterdam, Netherlands',nextPort:'Jubail Commercial Port',agent:'Bahri Shipping',lat:26.1,lng:52.5,berth:'Pending',inTransit:true},
+  {id:9,name:'JAZAN GUARDIAN',imo:'9412087',voyage:'VY-005',flag:'🇵🇦',nationality:'Panama',type:'Ro-Ro Vessel',emoji:'🚗',status:'expected',port:'Jazan Port',contractor:'ICTSI Saudi',eta:'May 14, 2026 11:00',etd:'May 16, 2026 20:00',speed:15.5,dwt:18500,loa:'196m',beam:'30m',draft:'8.2m',cargo:'Vehicles',lastPort:'Djibouti',nextPort:'Jazan Port',agent:'GAC Saudi Arabia',lat:14.5,lng:43.5,berth:'Pending',inTransit:true},
+  {id:10,name:'YANBU NAVIGATOR',imo:'9456789',voyage:'VY-009',flag:'🇸🇬',nationality:'Singapore',type:'Container Ship',emoji:'🟦',status:'delayed',port:'Yanbu Commercial Port',contractor:'Saudi Ports Authority',eta:'May 15, 2026 14:00',etd:'May 17, 2026 22:00',speed:8.2,dwt:55000,loa:'305m',beam:'40m',draft:'13.0m',cargo:'Containers',lastPort:'Colombo, Sri Lanka',nextPort:'Yanbu Commercial Port',agent:'GAC Saudi Arabia',lat:20.0,lng:42.0,berth:'Pending',inTransit:true},
+  {id:11,name:'BAHRI UNITY',imo:'9311567',voyage:'VY-011',flag:'🇸🇦',nationality:'Saudi Arabia',type:'VLCC',emoji:'🛢️',status:'arriving',port:'Jeddah Islamic Port',contractor:'RSGT',eta:'May 11, 2026 12:00',etd:'May 13, 2026 06:00',speed:13.1,dwt:300000,loa:'333m',beam:'60m',draft:'20.5m',cargo:'Crude Oil',lastPort:'Ras Tanura, KSA',nextPort:'South Korea',agent:'Bahri Shipping',lat:20.8,lng:40.2,berth:'Pending',inTransit:true},
+  {id:12,name:'KING FAHAD SPIRIT',imo:'9598432',voyage:'VY-008',flag:'🇸🇦',nationality:'Saudi Arabia',type:'LNG Tanker',emoji:'🔵',status:'arrived',port:'King Fahad Industrial Port',contractor:'Red Sea Gateway Terminal',eta:'May 10, 2026 07:00',etd:'May 13, 2026 19:00',speed:0,dwt:93000,loa:'290m',beam:'45m',draft:'11.5m',cargo:'LNG',lastPort:'Qatargas Terminal',nextPort:'Fos-sur-Mer, France',agent:'Inchcape Shipping',lat:27.22,lng:49.87,berth:'K-1',inTransit:false},
+  {id:13,name:'MAWANI HORIZON',imo:'9832100',voyage:'VY-010',flag:'🇸🇦',nationality:'Saudi Arabia',type:'Bulk Carrier',emoji:'⚓',status:'expected',port:'Jeddah Islamic Port',contractor:'RSGT',eta:'May 15, 2026 03:00',etd:'May 17, 2026 15:00',speed:14.8,dwt:118000,loa:'250m',beam:'43m',draft:'15.3m',cargo:'Iron Ore',lastPort:'Sohar, Oman',nextPort:'Jeddah Islamic Port',agent:'Bahri Shipping',lat:17.0,lng:40.5,berth:'Pending',inTransit:true},
+  {id:14,name:'RED SEA PIONEER',imo:'9634521',voyage:'VY-003',flag:'🇬🇷',nationality:'Greece',type:'General Cargo',emoji:'📦',status:'delayed',port:'Yanbu Commercial Port',contractor:'Saudi Ports Authority',eta:'May 16, 2026 09:00',etd:'May 18, 2026 16:00',speed:6.4,dwt:22000,loa:'180m',beam:'28m',draft:'9.8m',cargo:'General Cargo',lastPort:'Port Said, Egypt',nextPort:'Yanbu Commercial Port',agent:'Inchcape Shipping',lat:22.5,lng:36.5,berth:'Pending',inTransit:true},
+  {id:15,name:'GULF FALCON',imo:'9687341',voyage:'VY-006',flag:'🇧🇭',nationality:'Bahrain',type:'Container Ship',emoji:'🟦',status:'departed',port:'King Abdulaziz Port — Dammam',contractor:'APM Terminals',eta:'May 9, 2026 05:00',etd:'May 11, 2026 14:00',speed:19.2,dwt:41000,loa:'248m',beam:'32m',draft:'11.9m',cargo:'Containers',lastPort:'King Abdulaziz Port — Dammam',nextPort:'Bahrain',agent:'Kanoo Maritime',lat:26.0,lng:50.8,berth:'Departed',inTransit:false},
+];
+
+const PORTS=[
+  {name:'Jeddah Islamic Port',lat:21.47,lng:39.18,short:'JED'},
+  {name:'King Abdulaziz Port — Dammam',lat:26.43,lng:50.01,short:'DAM'},
+  {name:'Jubail Commercial Port',lat:27.03,lng:49.65,short:'JUB'},
+  {name:'Yanbu Commercial Port',lat:24.09,lng:38.06,short:'YAN'},
+  {name:'Jazan Port',lat:16.88,lng:42.58,short:'JAZ'},
+  {name:'Ras Al-Khair Port',lat:27.45,lng:49.30,short:'RAK'},
+  {name:'King Fahad Industrial Port',lat:27.22,lng:49.87,short:'KFI'},
+  {name:'Ras Tanura Port',lat:26.72,lng:50.08,short:'RAS'},
+];
+
+// ── STATS ──────────────────────────────────────────────
+function updateStats(list){
+  const all=list.length||VESSELS.length;
+  const src=list.length?list:VESSELS;
+  document.getElementById('st-total').textContent=VESSELS.length;
+  document.getElementById('st-arriving').textContent=VESSELS.filter(v=>v.status==='arriving').length;
+  document.getElementById('st-docked').textContent=VESSELS.filter(v=>v.status==='docked').length;
+  document.getElementById('st-delayed').textContent=VESSELS.filter(v=>v.status==='delayed').length;
+  document.getElementById('st-departed').textContent=VESSELS.filter(v=>v.status==='departed').length;
+}
+updateStats(VESSELS);
+
+// ── MAP ────────────────────────────────────────────────
+const map=L.map('map',{zoomControl:false,attributionControl:false}).setView([23,44],5);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(map);
+L.control.zoom({position:'topright'}).addTo(map);
+
+const SC={arrived:'#34d399',arriving:'#00e5c3',docked:'#a78bfa',expected:'#3db4f2',delayed:'#f5a623',departed:'#ff5c6a'};
+
+function vesselMarkerIcon(v){
+  const c=SC[v.status]||'#3db4f2';
+  const pulse=v.status==='arriving'?`animation:blink 1.3s ease-in-out infinite`:'';
+  return L.divIcon({
+    html:`<div style="width:11px;height:11px;border-radius:50%;background:${c};border:2px solid rgba(255,255,255,.45);box-shadow:0 0 10px ${c}99;${pulse}"></div>`,
+    iconSize:[11,11],iconAnchor:[5,5],className:''
+  });
+}
+function portMarkerIcon(){
+  return L.divIcon({
+    html:`<div style="width:13px;height:13px;border-radius:3px;background:rgba(167,139,250,.9);border:2px solid rgba(167,139,250,.5);box-shadow:0 0 12px rgba(167,139,250,.5);transform:rotate(45deg)"></div>`,
+    iconSize:[13,13],iconAnchor:[6,6],className:''
+  });
+}
+
+const markerMap={};
+PORTS.forEach(p=>{
+  L.marker([p.lat,p.lng],{icon:portMarkerIcon()}).addTo(map)
+   .bindPopup(`<div class="pop-name">⚓ ${p.name}</div><div class="pop-row">Saudi Ports Authority</div>`,{className:'vmap-popup'});
+});
+
+VESSELS.forEach(v=>{
+  const m=L.marker([v.lat,v.lng],{icon:vesselMarkerIcon(v)}).addTo(map);
+  m.bindPopup(`
+    <div class="pop-name">🚢 ${v.name}</div>
+    <div class="pop-row">IMO: ${v.imo} · ${v.voyage}</div>
+    <div class="pop-row">→ ${v.port}</div>
+    <div class="pop-row">Cargo: ${v.cargo}</div>
+    <div class="pop-status"><span style="color:${SC[v.status]};font-family:'IBM Plex Mono',monospace;font-size:.62rem;text-transform:uppercase;letter-spacing:.06em">● ${v.status.toUpperCase()}</span></div>
+  `,{className:'vmap-popup'});
+  m.on('click',()=>{selectVessel(v);});
+  markerMap[v.id]=m;
+});
+
+// ── FILTERS ────────────────────────────────────────────
+let currentSort='eta';
+let currentStatus='all';
+let selectedVessel=null;
+
+function setSort(key,btn){
+  currentSort=key;
+  document.querySelectorAll('#sort-chips .chip').forEach(c=>c.classList.remove('active'));
+  btn.classList.add('active');
+  applyFilters();
+}
+
+function setStatus(s,btn){
+  currentStatus=s;
+  document.querySelectorAll('.status-chips .schip').forEach(c=>c.classList.remove('active'));
+  btn.classList.add('active');
+  applyFilters();
+}
+
+function applyFilters(){
+  const qname=(document.getElementById('q-name').value||'').toLowerCase().trim();
+  const qvoyage=(document.getElementById('q-voyage').value||'').toLowerCase().trim();
+  const qport=document.getElementById('q-port').value;
+  const qcontractor=document.getElementById('q-contractor').value;
+
+  let list=VESSELS.filter(v=>{
+    if(qname&&!v.name.toLowerCase().includes(qname)&&!v.imo.includes(qname))return false;
+    if(qvoyage&&!v.voyage.toLowerCase().includes(qvoyage))return false;
+    if(qport&&v.port!==qport)return false;
+    if(qcontractor&&v.contractor!==qcontractor)return false;
+    if(currentStatus!=='all'&&v.status!==currentStatus)return false;
+    return true;
+  });
+
+  // Sort
+  list.sort((a,b)=>{
+    if(currentSort==='eta')return new Date(a.eta)-new Date(b.eta);
+    if(currentSort==='name')return a.name.localeCompare(b.name);
+    if(currentSort==='speed')return b.speed-a.speed;
+    if(currentSort==='dwt')return b.dwt-a.dwt;
+    return 0;
+  });
+
+  renderList(list);
+  document.getElementById('res-count').innerHTML=`<span>${list.length}</span> of ${VESSELS.length} vessels`;
+}
+
+function resetAll(){
+  document.getElementById('q-name').value='';
+  document.getElementById('q-voyage').value='';
+  document.getElementById('q-port').value='';
+  document.getElementById('q-contractor').value='';
+  currentStatus='all';
+  currentSort='eta';
+  document.querySelectorAll('.status-chips .schip').forEach(c=>c.classList.remove('active'));
+  document.querySelector('.schip.all').classList.add('active');
+  document.querySelectorAll('#sort-chips .chip').forEach(c=>c.classList.remove('active'));
+  document.querySelector('[data-sort="eta"]').classList.add('active');
+  applyFilters();
+}
+
+// ── CONTRACTOR COLORS ──────────────────────────────────
+const CC={'RSGT':'#00e5c3','Saudi Global Ports':'#3db4f2','APM Terminals':'#f5a623','Red Sea Gateway Terminal':'#ff5c6a','ICTSI Saudi':'#a78bfa','Saudi Aramco':'#34d399','Saudi Ports Authority':'#7a9ab8'};
+
+// ── RENDER LIST ────────────────────────────────────────
+function renderList(list){
+  const el=document.getElementById('ship-list');
+  const countHTML=`<div class="res-count" id="res-count"><span>${list.length}</span> of ${VESSELS.length} vessels</div>`;
+
+  if(!list.length){
+    el.innerHTML=countHTML+`<div style="text-align:center;padding:2rem;font-family:var(--mono);font-size:.7rem;color:var(--txt3);letter-spacing:.08em">⚓<br/><br/>No vessels match<br/>your search</div>`;
+    return;
+  }
+
+  el.innerHTML=countHTML+list.map((v,i)=>`
+    <div class="ship-card${selectedVessel&&selectedVessel.id===v.id?' selected':''}" 
+         id="card-${v.id}" 
+         onclick="selectVessel(${JSON.stringify(v).replace(/"/g,'&quot;')})"
+         style="animation-delay:${i*.04}s">
+      <div class="card-top">
+        <div class="card-vessel">
+          <div class="vessel-icon">${v.emoji}</div>
+          <div>
+            <div class="vessel-name">${v.name}</div>
+            <div class="vessel-type">${v.type}</div>
+          </div>
+        </div>
+        <span class="sbadge ${v.status}">${v.status.toUpperCase()}</span>
+      </div>
+      <div class="card-meta">
+        <div class="meta-item">
+          <div class="meta-label">Voyage</div>
+          <div class="meta-val accent">${v.voyage}</div>
+        </div>
+        <div class="meta-item">
+          <div class="meta-label">IMO</div>
+          <div class="meta-val">${v.imo}</div>
+        </div>
+        <div class="meta-item">
+          <div class="meta-label">ETA</div>
+          <div class="meta-val ${v.status==='delayed'?'warn':''}">${v.eta.split(',')[0]+','+v.eta.split(',')[1]}</div>
+        </div>
+        <div class="meta-item">
+          <div class="meta-label">Port</div>
+          <div class="meta-val" style="font-size:.62rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.port.split(' —')[0].split(' Port')[0]} Port</div>
+        </div>
+      </div>
+      <div class="card-bottom">
+        <div class="contractor-badge">
+          <div class="contractor-dot" style="background:${CC[v.contractor]||'#7a9ab8'}"></div>
+          <div class="contractor-name">${v.contractor}</div>
+        </div>
+        <div class="card-speed">${v.speed>0?`<span>${v.speed}</span> kn`:'At berth'}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── SELECT VESSEL ──────────────────────────────────────
+function selectVessel(v){
+  selectedVessel=v;
+
+  // Update card highlight
+  document.querySelectorAll('.ship-card').forEach(c=>c.classList.remove('selected'));
+  const card=document.getElementById('card-'+v.id);
+  if(card){card.classList.add('selected');card.scrollIntoView({behavior:'smooth',block:'nearest'})}
+
+  // Fly map
+  markerMap[v.id]&&map.flyTo([v.lat,v.lng],8,{duration:1.2});
+  markerMap[v.id]&&setTimeout(()=>markerMap[v.id].openPopup(),1300);
+
+  // Render detail
+  const statusColor=SC[v.status]||'#3db4f2';
+  const tlSteps=getTimeline(v);
+
+  document.getElementById('detail-panel').innerHTML=`
+    <div>
+      <div class="detail-header">
+        <div class="dh-left">
+          <div class="dh-vessel">${v.name}</div>
+          <div class="dh-sub">
+            <span class="dh-flag">${v.flag}</span>
+            <span class="dh-imo" style="font-family:var(--mono)">IMO ${v.imo}</span>
+            <span class="dh-imo">${v.nationality}</span>
+            <span class="sbadge ${v.status}">${v.status.toUpperCase()}</span>
+          </div>
+        </div>
+        <div class="dh-right">
+          <div style="font-family:var(--mono);font-size:.65rem;color:var(--txt3)">Voyage</div>
+          <div style="font-family:var(--head);font-size:1.5rem;font-weight:800;color:var(--gold)">${v.voyage}</div>
+        </div>
+      </div>
+
+      <div class="detail-grid">
+        <div class="dcard">
+          <div class="dcard-label">ETA</div>
+          <div class="dcard-val ${v.status==='delayed'?'warn':'accent'}">${v.eta.split(' ').slice(0,3).join(' ')}</div>
+          <div class="dcard-sub">${v.eta.split(' ').slice(3).join(' ')}</div>
+        </div>
+        <div class="dcard">
+          <div class="dcard-label">ETD</div>
+          <div class="dcard-val">${v.etd.split(' ').slice(0,3).join(' ')}</div>
+          <div class="dcard-sub">${v.etd.split(' ').slice(3).join(' ')}</div>
+        </div>
+        <div class="dcard">
+          <div class="dcard-label">Speed</div>
+          <div class="dcard-val accent">${v.speed>0?v.speed+' kn':'0 kn'}</div>
+          <div class="dcard-sub">${v.speed>0?'Underway':'At berth / moored'}</div>
+        </div>
+        <div class="dcard">
+          <div class="dcard-label">Cargo</div>
+          <div class="dcard-val" style="font-size:.9rem">${v.cargo}</div>
+          <div class="dcard-sub">${v.type}</div>
+        </div>
+        <div class="dcard">
+          <div class="dcard-label">DWT</div>
+          <div class="dcard-val">${v.dwt.toLocaleString()}</div>
+          <div class="dcard-sub">Deadweight Tons</div>
+        </div>
+        <div class="dcard">
+          <div class="dcard-label">Berth</div>
+          <div class="dcard-val ${v.berth==='Pending'?'warn':''}">${v.berth}</div>
+          <div class="dcard-sub">${v.port.split(' —')[0]}</div>
+        </div>
+      </div>
+
+      <!-- VOYAGE TIMELINE -->
+      <div class="detail-section">
+        <div class="ds-title">Voyage Progress</div>
+        <div class="timeline">
+          ${tlSteps.map(s=>`
+            <div class="tl-step">
+              <div class="tl-node ${s.state}">${s.icon}</div>
+              <div class="tl-label">${s.label}</div>
+              <div class="tl-time">${s.time}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <!-- VESSEL PARTICULARS -->
+      <div class="detail-section">
+        <div class="ds-title">Vessel Particulars</div>
+        <div class="info-grid">
+          <div class="info-item"><div class="info-label">LOA</div><div class="info-val">${v.loa}</div></div>
+          <div class="info-item"><div class="info-label">Beam</div><div class="info-val">${v.beam}</div></div>
+          <div class="info-item"><div class="info-label">Draft</div><div class="info-val">${v.draft}</div></div>
+          <div class="info-item"><div class="info-label">Flag</div><div class="info-val">${v.flag} ${v.nationality}</div></div>
+          <div class="info-item"><div class="info-label">Last Port</div><div class="info-val teal">${v.lastPort}</div></div>
+          <div class="info-item"><div class="info-label">Next Port</div><div class="info-val">${v.nextPort}</div></div>
+          <div class="info-item"><div class="info-label">Agent</div><div class="info-val gold">${v.agent}</div></div>
+          <div class="info-item"><div class="info-label">Contractor</div><div class="info-val" style="color:${CC[v.contractor]||'#7a9ab8'}">${v.contractor}</div></div>
+        </div>
+      </div>
+
+      <!-- PORT INFO -->
+      <div class="detail-section">
+        <div class="ds-title">Destination Port</div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:.9rem;display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div style="font-family:var(--head);font-size:1.05rem;font-weight:700;margin-bottom:.25rem">${v.port}</div>
+            <div style="font-family:var(--mono);font-size:.62rem;color:var(--txt3)">Kingdom of Saudi Arabia · MAWANI Regulated</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-family:var(--mono);font-size:.62rem;color:var(--txt3);margin-bottom:.2rem">Contractor</div>
+            <div style="font-family:var(--head);font-size:.9rem;font-weight:700;color:${CC[v.contractor]||'#7a9ab8'}">${v.contractor}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function getTimeline(v){
+  const steps=[
+    {label:'Departed',time:v.lastPort,icon:'✓',state:'done'},
+    {label:'In Transit',time:v.speed>0?v.speed+' kn':'—',icon:v.inTransit?'◎':'✓',state:v.inTransit?'active':'done'},
+    {label:'Arrival',time:v.eta.split(',')[0]+','+v.eta.split(',')[1],icon:['arrived','docked'].includes(v.status)?'✓':v.status==='arriving'?'◎':'○',state:['arrived','docked'].includes(v.status)?'done':v.status==='arriving'?'active':'pending'},
+    {label:'Docked',time:v.status==='docked'?'Now':['arrived'].includes(v.status)?v.berth:'—',icon:v.status==='docked'?'✓':'○',state:v.status==='docked'?'done':'pending'},
+    {label:'Departed',time:v.etd.split(',')[0]+','+v.etd.split(',')[1],icon:v.status==='departed'?'✓':'○',state:v.status==='departed'?'done':'pending'},
+  ];
+  return steps;
+}
+
+applyFilters();
+</script>
+
+</body>
+</html>
+
